@@ -9,9 +9,41 @@ struct PageTable
     uint64_t length;
 };
 
+
+bool isFrameEmpty(uint64_t frameIndex)
+{
+    word_t  value;
+    for (uint64_t i = 0; i < PAGE_SIZE; ++i) {
+        PMread(frameIndex * PAGE_SIZE + i, &value);
+        if (value != 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+word_t findNextFrameIndex()
+{
+    for (auto frame = 1; frame < NUM_FRAMES; ++frame)
+    {
+        if(isFrameEmpty(frame))
+        {
+            return frame;
+        }
+    }
+    // TODO need to find a page to evict
+    // finding the deepest frame index and page index of this frame (virtual memory address)
+    word_t index = 1; //just numbers to try for now
+    uint64_t pageIndex = 5;
+    PMevict(index, pageIndex);
+    return index;
+
+}
+
 uint64_t findPageNumber(uint64_t address, uint64_t depth)
 {
-    uint64_t pageNumber = address >> (TABLES_DEPTH - depth);
+    uint64_t pageNumber = address >> ((TABLES_DEPTH - depth) * OFFSET_WIDTH);
     return pageNumber;
 }
 
