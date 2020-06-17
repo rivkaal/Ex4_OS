@@ -9,6 +9,7 @@ struct PageTable
     uint64_t length;
 };
 
+void clearTable(uint64_t frameIndex);
 
 bool isFrameEmpty(uint64_t frameIndex)
 {
@@ -44,7 +45,15 @@ word_t findNextFrameIndex()
 uint64_t findPageNumber(uint64_t address, uint64_t depth)
 {
     //uint64_t pageNumber = address >> (TABLES_DEPTH - depth); //TODO verify calculations
-    uint64_t pageNumber = address >> ((TABLES_DEPTH - depth) * OFFSET_WIDTH);
+
+    uint64_t pageNumber = 0;
+    uint64_t mask = 0;
+    for (uint64_t i = 0; i < OFFSET_WIDTH; i++)
+    {
+        mask += 1LL << i;
+    }
+    pageNumber = (address >> ((TABLES_DEPTH - (depth + 1)) * OFFSET_WIDTH));
+    pageNumber = pageNumber & (mask);
     return pageNumber;
 }
 
@@ -52,14 +61,14 @@ uint64_t findPageNumber(uint64_t address, uint64_t depth)
 word_t findAddress(uint64_t virtualAddr)
 {
     word_t tempWord = 0;
-    uint64_t victim;
-    uint64_t tempAddress = findPageNumber(virtualAddr, 1);
+    word_t victim;
+    uint64_t tempAddress = findPageNumber(virtualAddr, 1);      // Top level table
     PMread(0 + tempAddress, &tempWord);
 
     if (tempWord == 0)
     {
-        victim = findNextFrame();
-        clearTable(victim);
+        victim = findNextFrameIndex();
+        clearTable(victim);         // findNextFrameIndex returns word_t as it should, but clearTable accepts uint64_t so maybe something is missing
         PMwrite(0 + tempAddress, victim);
         tempWord = victim;
     }
@@ -70,7 +79,7 @@ word_t findAddress(uint64_t virtualAddr)
        PMread(tempWord*PAGE_SIZE + tempAddress, &tempWord);
        if (tempWord == 0)
        {
-            victim = findNextFrame();
+            victim = findNextFrameIndex();
            clearTable(victim);
            if (tempAddress <= 16)
            {
@@ -112,11 +121,8 @@ int main(int argc, char **argv)
 {
     uint64_t a,b,c;
     word_t x,y,z;
-    a= 20;
-    x = 1355;
-    z=3;
-    VMwrite(a, 1355);
-    VMread(a, &y);
-    printf("%u\n", y);
+    a = 618;
+    b = findPageNumber(a, 3);
+    printf("%lu\n",b);
     return 0;
 }
