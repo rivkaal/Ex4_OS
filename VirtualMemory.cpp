@@ -46,14 +46,13 @@ uint64_t findPageNumber(uint64_t address, uint64_t depth)
 {
     //uint64_t pageNumber = address >> (TABLES_DEPTH - depth); //TODO verify calculations
 
-    uint64_t pageNumber = 0;
-    uint64_t mask = 0;
+    uint64_t offsetMask = 0;
     for (uint64_t i = 0; i < OFFSET_WIDTH; i++)
     {
-        mask += 1LL << i;
+        offsetMask += 1LL << i;
     }
-    pageNumber = (address >> ((TABLES_DEPTH - (depth + 1)) * OFFSET_WIDTH));
-    pageNumber = pageNumber & (mask);
+    uint64_t pageNumber = (address >> ((TABLES_DEPTH - (depth + 1)) * OFFSET_WIDTH));
+    pageNumber = pageNumber & (offsetMask);
     return pageNumber;
 }
 
@@ -62,30 +61,30 @@ word_t findAddress(uint64_t virtualAddr)
 {
     word_t tempWord = 0;
     word_t victim;
-    uint64_t tempAddress = findPageNumber(virtualAddr, 1);      // Top level table
-    PMread(0 + tempAddress, &tempWord);
+    uint64_t curPageNumber = findPageNumber(virtualAddr, 1);      // Top level table
+    PMread(0 + curPageNumber, &tempWord);
 
     if (tempWord == 0)
     {
         victim = findNextFrameIndex();
         clearTable(victim);         // findNextFrameIndex returns word_t as it should, but clearTable accepts uint64_t so maybe something is missing
-        PMwrite(0 + tempAddress, victim);
+        PMwrite(0 + curPageNumber, victim);
         tempWord = victim;
     }
 
    for (uint64_t depth = 2; depth < TABLES_DEPTH; depth++)
    {
-       tempAddress = findPageNumber(tempAddress, depth);
-       PMread(tempWord*PAGE_SIZE + tempAddress, &tempWord);
+       curPageNumber = findPageNumber(virtualAddr, depth);
+       PMread(tempWord*PAGE_SIZE + curPageNumber, &tempWord);
        if (tempWord == 0)
        {
             victim = findNextFrameIndex();
            clearTable(victim);
-           if (tempAddress <= 16)
+           if (curPageNumber < 16)     //
            {
                PMrestore(victim, virtualAddr);
            }
-           PMwrite(tempWord*PAGE_SIZE + tempAddress, victim);
+           PMwrite(tempWord*PAGE_SIZE + curPageNumber, victim);
 //           TODO evict n'stuff
        }
 
