@@ -3,10 +3,10 @@
 
 #include <stdio.h>
 
-struct PageTable
+struct Frame
 {
-    uint64_t baseAddr;
-    uint64_t length;
+    word_t frameIndex;
+    word_t pageIndex;
 };
 
 void clearTable(uint64_t frameIndex);
@@ -23,6 +23,18 @@ bool isFrameEmpty(uint64_t frameIndex)
     }
     return true;
 }
+
+
+Frame findFrameToEvict()
+{
+    int maxDepth = 0;
+    int curDepth = 0;
+    Frame farestFrame = Frame();
+    farestFrame.frameIndex = 0;
+    farestFrame.pageIndex = 0;
+
+}
+
 
 word_t findNextFrameIndex()
 {
@@ -78,7 +90,7 @@ word_t findAddress(uint64_t virtualAddr)
        PMread(tempWord*PAGE_SIZE + curPageNumber, &tempWord);
        if (tempWord == 0)
        {
-            victim = findNextFrameIndex();
+           victim = findNextFrameIndex();
            clearTable(victim);
            if (curPageNumber < 16)     //
            {
