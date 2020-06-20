@@ -2,7 +2,7 @@
 #include "PhysicalMemory.h"
 
 #include <cstdio>
-
+#include <cassert>
 struct Frame
 {
     word_t frameIndex;
@@ -20,6 +20,7 @@ struct DFSResult
 };
 
 void clearTable(uint64_t frameIndex);
+uint64_t findPageNumber(uint64_t address, uint64_t depth);
 
 bool isFrameEmpty(uint64_t frameIndex)
 {
@@ -36,7 +37,8 @@ bool isFrameEmpty(uint64_t frameIndex)
 
 DFSResult DFSRecursive(word_t parent, word_t curFrame, word_t depth, word_t pathToCurrent)
 {
-    DFSResult result({false,0,0,0, 0, 0});
+    DFSResult result({false,0,0,0, 0,
+                      0});
 
     if (curFrame == parent)
     {
@@ -59,6 +61,7 @@ DFSResult DFSRecursive(word_t parent, word_t curFrame, word_t depth, word_t path
         result.maxDepth = depth;
         result.maxFrameIndex = curFrame;
         result.deepestFrameIndex = curFrame;
+        result.pathToDeepest = pathToCurrent;
         return result;
     }
 
@@ -82,17 +85,35 @@ DFSResult DFSRecursive(word_t parent, word_t curFrame, word_t depth, word_t path
                 {
                     result.maxFrameIndex = curResult.maxFrameIndex;
                 }
+
                 if (curResult.maxDepth > result.maxDepth)
                 {
                     result.maxDepth = curResult.maxDepth;
                     result.deepestFrameIndex = curResult.deepestFrameIndex;
-                    result.deepestPageIndex = pathToNext;
+                    result.pathToDeepest = pathToNext;
                 }
             }
         }
     }
     return result;
 }
+
+//uint64_t findLeaf(uint64_t VAddress)
+//{
+//    uint64_t curFrame = 0;
+//    uint64_t curPageNum =
+//    for (uint64_t i = 1; i < TABLES_DEPTH; i++)
+//    {
+//        if (tempWord == 0)
+//        {
+//            victim = findNextFrameIndex();
+//            clearTable(victim);         // findNextFrameIndex returns word_t as it should, but clearTable accepts uint64_t so maybe something is missing
+//            PMwrite(0 + curPageNumber, victim);
+//            tempWord = victim;
+//        }
+//        lastPage = word_t(tempWord);
+//    }
+//}
 
 word_t findCyclicDistance(uint64_t from, uint64_t to)
 {
@@ -103,7 +124,7 @@ word_t findCyclicDistance(uint64_t from, uint64_t to)
 
 word_t findNextFrameIndex(word_t parent)
 {
-    DFSResult result = DFSRecursive(parent, 0, 1);
+    DFSResult result = DFSRecursive(parent, 0, 1, 0 );
     if (result.empty)
     {
         return result.deepestFrameIndex;
@@ -113,7 +134,7 @@ word_t findNextFrameIndex(word_t parent)
         return result.maxFrameIndex + 1;
     }
 
-    PMevict();
+    PMevict(result.deepestFrameIndex, result.pathToDeepest);
 
 //    for (auto frame = 1; frame < NUM_FRAMES; ++frame)
 //    {
@@ -125,10 +146,12 @@ word_t findNextFrameIndex(word_t parent)
 
     // TODO need to find a page to evict
     // finding the deepest frame index and page index of this frame (virtual memory address)
-    word_t index = 1; //just numbers to try for now
-    uint64_t pageIndex = 5;
-    PMevict(index, pageIndex);
-    return index;
+    return result.deepestFrameIndex;
+}
+
+uint64_t findPath(uint64_t VAddress)
+{
+    return VAddress >> OFFSET_WIDTH;
 }
 
 uint64_t findPageNumber(uint64_t address, uint64_t depth)
@@ -155,11 +178,13 @@ word_t findAddress(uint64_t virtualAddr)
     word_t tempWord = 0;
     word_t victim;
     word_t lastPage = 0;
+
     uint64_t curPageNumber = findPageNumber(virtualAddr, 1);      // Top level table
-    PMread(0 + curPageNumber, &tempWord);
+    uint64_t virtualPath = findPath(virtualAddr);
+            PMread(0 + curPageNumber, &tempWord);
     if (tempWord == 0)
     {
-        victim = findNextFrameIndex();
+        victim = findNextFrameIndex(virtualPath);
         clearTable(victim);         // findNextFrameIndex returns word_t as it should, but clearTable accepts uint64_t so maybe something is missing
         PMwrite(0 + curPageNumber, victim);
         tempWord = victim;
@@ -172,7 +197,7 @@ word_t findAddress(uint64_t virtualAddr)
        PMread(tempWord*PAGE_SIZE + curPageNumber, &tempWord);
        if (tempWord == 0)
        {
-           victim = findNextFrameIndex();
+           victim = findNextFrameIndex(virtualPath);
            if (victim == lastPage)
            {
                //TODO pick second last
@@ -216,12 +241,20 @@ int VMwrite(uint64_t virtualAddress, word_t value) {
     return 1;
 }
 
-int main(int argc, char **argv)
-{
-    uint64_t a,b,c;
-    word_t x,y,z;
-    a = 618;
-    b = findPageNumber(a, 3);
-    printf("%lu\n",b);
+int main(int argc, char **argv) {
+    VMinitialize();
+    for (uint64_t i = 0; i < (2 * NUM_FRAMES); ++i) {
+        printf("writing to %llu\n", (long long int) i);
+        VMwrite(5 * i * PAGE_SIZE, i);
+    }
+
+    for (uint64_t i = 0; i < (2 * NUM_FRAMES); ++i) {
+        word_t value;
+        VMread(5 * i * PAGE_SIZE, &value);
+        printf("reading from %llu %d\n", (long long int) i, value);
+        assert(uint64_t(value) == i);
+    }
+    printf("success\n");
+
     return 0;
 }
