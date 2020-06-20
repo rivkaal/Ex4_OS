@@ -180,20 +180,20 @@ word_t findAddress(uint64_t virtualAddr)
 
     uint64_t curPageNumber = findPageNumber(virtualAddr, 0);      // Top level table
     uint64_t virtualPath = findPath(virtualAddr);
-            PMread(0 + curPageNumber, &tempWord);
+    PMread(0 + curPageNumber, &tempWord);
     if (tempWord == 0)
     {
-        victim = findNextFrameIndex(virtualPath);
+        victim = findNextFrameIndex(virtualAddr);
         clearTable(victim);         // findNextFrameIndex returns word_t as it should, but clearTable accepts uint64_t so maybe something is missing
         PMwrite(0 + curPageNumber, victim);
         tempWord = victim;
     }
     lastPage = word_t(tempWord);
 
-   for (uint64_t depth = 1; depth <= TABLES_DEPTH; depth++)
+   for (uint64_t depth = 1; depth < TABLES_DEPTH; depth++)
    {
        curPageNumber = findPageNumber(virtualAddr, depth);
-       PMread(tempWord*PAGE_SIZE + curPageNumber, &tempWord);
+       PMread(lastPage*PAGE_SIZE + curPageNumber, &tempWord);
        if (tempWord == 0)
        {
            victim = findNextFrameIndex(lastPage);
@@ -203,11 +203,11 @@ word_t findAddress(uint64_t virtualAddr)
            }
            //           TODO evict n'stuff
            clearTable(victim);
-           if (depth == TABLES_DEPTH)     // only if actual page
+           if (depth == TABLES_DEPTH - 1)     // only if actual page
            {
                PMrestore(victim, virtualAddr/ PAGE_SIZE);
            }
-           PMwrite(tempWord*PAGE_SIZE + curPageNumber, victim);
+           PMwrite(lastPage*PAGE_SIZE + curPageNumber, victim);
            tempWord = victim;
 
        }
@@ -243,12 +243,12 @@ int VMwrite(uint64_t virtualAddress, word_t value) {
 
 int main(int argc, char **argv) {
     VMinitialize();
-    for (uint64_t i = 0; i < ( NUM_FRAMES); ++i) {
+    for (uint64_t i = 0; i < NUM_FRAMES; ++i) {
         printf("writing to %llu\n", (long long int) i);
         VMwrite(5 * i * PAGE_SIZE, i);
     }
 
-    for (uint64_t i = 0; i < ( NUM_FRAMES); ++i) {
+    for (uint64_t i = 0; i < NUM_FRAMES; ++i) {
         word_t value;
         VMread(5 * i * PAGE_SIZE, &value);
         printf("reading from %llu %d\n", (long long int) i, value);
