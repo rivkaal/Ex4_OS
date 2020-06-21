@@ -2,6 +2,7 @@
 #include "PhysicalMemory.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cassert>
 struct Frame
 {
@@ -17,13 +18,13 @@ struct DFSResult
     word_t toEvict;
     word_t maxFrameIndex;
     word_t pathToDeepest;
-    word_t pathToEvict;
+    uint64_t pathToEvict;
     word_t evictParent;
 };
 
-void debugPrintPM()
+void debugPrintPM(char *bpMessage = (char *) (""))
 {
-    printf ("--------- physical memory ------------\n");
+    printf ("--------- %s ------------\n", bpMessage);
     word_t a = 0;
     for (int i = 0; i < RAM_SIZE; i++)
     {
@@ -36,15 +37,25 @@ void debugPrintPM()
 void clearTable(uint64_t frameIndex);
 uint64_t findPageNumber(uint64_t address, uint64_t depth);
 
-word_t findCyclicDistance(uint64_t from, uint64_t to)
+/**
+ * finding cyclic distance
+ * @param from place
+ * @param to another place
+ * @return
+ */
+word_t findCyclicDistance(int from, int to)
 {
-    if (from - to < NUM_PAGES - (from - to))
-        return from - to;
-    return NUM_PAGES - (from - to);
+    if (abs(from - to) < NUM_PAGES - abs(from - to))
+        return abs(from - to);
+    return NUM_PAGES - abs(from - to);
 }
 
 
-
+/**
+ * checking if frame is empty
+ * @param frameIndex
+ * @return true if it's empty
+ */
 bool isFrameEmpty(uint64_t frameIndex)
 {
     word_t  value;
@@ -58,18 +69,35 @@ bool isFrameEmpty(uint64_t frameIndex)
     return true;
 }
 
+/**
+ * recursive dfs function that going through all frames and returns a lot of answers
+ * @param parent num of frame that we need to find a baby frame
+ * @param curFrame num of cur frame
+ * @param depth current depth
+ * @param pathToCurrent how to get to the cur frame
+ * @param virtualAddress have no idea what the fuck it is
+ * @param curParent the previous frame
+ * @return
+ */
 DFSResult DFSRecursive(word_t parent, word_t curFrame, word_t depth, word_t pathToCurrent, uint64_t virtualAddress, uint64_t curParent)
 {
     DFSResult result({false,0,0,0, 0,
-                      0, parent,0});
-
-//    if (curFrame == parent)
-//    {
-//        result.maxFrameIndex = parent;
-//        return result;
-//    }
+                      0, curParent,0});
 
     word_t tempWord;
+    if (depth > TABLES_DEPTH)       //debug
+    {
+        result.maxDepth = depth ;
+        result.maxFrameIndex = curFrame;
+        result.deepestFrameIndex = curFrame;
+        result.pathToDeepest = pathToCurrent;
+        result.toEvict = curFrame;
+        result.evictParent = curParent;
+        result.pathToEvict = pathToCurrent;
+        return result;
+    }
+
+
     //base case 1
 
     if (isFrameEmpty(curFrame))
@@ -83,22 +111,10 @@ DFSResult DFSRecursive(word_t parent, word_t curFrame, word_t depth, word_t path
         result.maxDepth = depth;
         result.maxFrameIndex = curFrame;
         result.deepestFrameIndex = curFrame;
+        result.pathToDeepest = pathToCurrent % PAGE_SIZE;
         result.toEvict = curFrame;
         result.pathToEvict = pathToCurrent;
         result.evictParent = curParent;
-        return result;
-    }
-    //base case 2
-//    if (depth >= TABLES_DEPTH)
-    if (depth > TABLES_DEPTH)       //debug
-    {
-        result.maxDepth = depth ;
-        result.maxFrameIndex = curFrame;
-        result.deepestFrameIndex = curFrame;
-        result.pathToDeepest = pathToCurrent;
-        result.toEvict = curFrame;
-        result.evictParent = curParent;
-        result.pathToEvict = pathToCurrent;
         return result;
     }
 
@@ -115,10 +131,11 @@ DFSResult DFSRecursive(word_t parent, word_t curFrame, word_t depth, word_t path
                 result.maxFrameIndex = curResult.maxFrameIndex;
                 result.empty = true;
                 result.deepestFrameIndex = curResult.deepestFrameIndex;
+                result.pathToDeepest = curResult.pathToDeepest;
                 result.maxDepth = curResult.maxDepth;
-                result.toEvict = curFrame;
-                result.evictParent = curParent;
-                result.pathToEvict =pathToCurrent;
+                result.toEvict = curResult.toEvict;
+                result.evictParent = curResult.evictParent;
+                result.pathToEvict =curResult.pathToEvict;
             }
             else if ((curResult.empty && result.empty) || (!curResult.empty && !result.empty))
             {
@@ -127,7 +144,7 @@ DFSResult DFSRecursive(word_t parent, word_t curFrame, word_t depth, word_t path
                     result.maxFrameIndex = curResult.maxFrameIndex;
 
                 }
-                if (findCyclicDistance(virtualAddress, curResult.pathToEvict) >
+                if (findCyclicDistance(virtualAddress, curResult.pathToEvict) >=
                     findCyclicDistance(virtualAddress, result.pathToEvict))
                 {
                     result.toEvict = curResult.toEvict;
@@ -140,7 +157,8 @@ DFSResult DFSRecursive(word_t parent, word_t curFrame, word_t depth, word_t path
                     result.maxDepth = curResult.maxDepth;
                     result.deepestFrameIndex = curResult.deepestFrameIndex;
                     result.pathToDeepest = pathToNext;
-//                    result.pathToEvict = pathToNext;
+                    result.pathToEvict = curResult.pathToEvict;
+                    result.toEvict = curResult.toEvict;
                 }
             }
         }
@@ -157,29 +175,22 @@ word_t findNextFrameIndex(word_t parent, uint64_t VAddr)
     uint64_t targetFrame;
     if (result.empty)
     {
-        targetFrame = (result.pathToDeepest & (PAGE_SIZE-1));
+        targetFrame = (result.pathToDeepest);
         PMwrite(result.evictParent*PAGE_SIZE + targetFrame, 0);
         return result.deepestFrameIndex;
     }
     if (result.maxFrameIndex + 1 < NUM_FRAMES)
-//    if (result.maxFrameIndex  < NUM_FRAMES)     //debug
     {
         return result.maxFrameIndex + 1;
     }
 
+    debugPrintPM();
+    printf("lulululullululu %lu %lu \n", result.toEvict, result.pathToEvict);
     PMevict(result.toEvict, result.pathToEvict);
-    targetFrame = (result.pathToEvict & (PAGE_SIZE-1));
-    PMwrite(result.evictParent*PAGE_SIZE + targetFrame, 0);
     debugPrintPM();
 
-//    for (auto frame = 1; frame < NUM_FRAMES; ++frame)
-//    {
-//        if(isFrameEmpty(frame) && frame != parent)
-//        {
-//            return frame;
-//        }
-//    }
-
+    targetFrame = (result.pathToEvict & (PAGE_SIZE-1));
+    PMwrite(result.evictParent*PAGE_SIZE + targetFrame, 0);
     return result.toEvict;
 }
 
@@ -191,32 +202,10 @@ uint64_t findPath(uint64_t VAddress)
 
 uint64_t findPageNumber(uint64_t address, uint64_t depth)
 {
-    //uint64_t pageNumber = address >> (TABLES_DEPTH - depth); //TODO verify calculations
-
-
-//    uint64_t pageNumber = (address >> ((TABLES_DEPTH - (depth + 1)) * OFFSET_WIDTH)) & (PAGE_SIZE - 1LL);
     uint64_t pageNumber = (address >> ((TABLES_DEPTH - (depth)) * OFFSET_WIDTH)) & (PAGE_SIZE - 1LL);
 
     return pageNumber;
 }
-
-//uint64_t getVirtualParent(uint64_t virtualAddr)
-//{
-//    uint64_t parent = 0;
-//    uint64_t path = 0;
-//    uint64_t curAddr = 0;
-//    word_t curWord = 0;
-//    word_t depth = 0;
-//    while(virtualAddr != curWord)
-//    {
-//        curAddr = findPageNumber(virtualAddr, depth);
-//        parent = curWord;
-//        path = (path << OFFSET_WIDTH) | curAddr;
-//        PMread(parent*PAGE_SIZE + curAddr, &curWord);
-//        depth++;
-//    }
-//    return parent;
-//}
 
 
 word_t findAddress(uint64_t virtualAddr)
@@ -225,20 +214,6 @@ word_t findAddress(uint64_t virtualAddr)
     word_t victim;
     word_t lastPage = 0;
     uint64_t curPageNumber;
-//    uint64_t curPageNumber = findPageNumber(virtualAddr, 0);      // Top level table
-//    printf("first Page number = %lu\n", curPageNumber);
-//    uint64_t virtualPath = findPath(virtualAddr);
-//    PMread(0 + curPageNumber, &tempWord);
-//    if (tempWord == 0)
-//    {
-//        victim = findNextFrameIndex(curPageNumber);
-//        clearTable(victim);         // findNextFrameIndex returns word_t as it should, but clearTable accepts uint64_t so maybe something is missing
-//        PMwrite(0 + curPageNumber, victim);
-//        debugPrintPM();
-//        tempWord = victim;
-//    }
-//    lastPage = word_t(tempWord);
-
    for (uint64_t depth = 0; depth < TABLES_DEPTH; depth++)
    {
        curPageNumber = findPageNumber(virtualAddr, depth);
@@ -246,28 +221,20 @@ word_t findAddress(uint64_t virtualAddr)
        if (tempWord == 0)
        {
            victim = findNextFrameIndex(lastPage, findPath(virtualAddr));
-//           victim = findNextFrameIndex(lastPage);
-           if (victim == lastPage)
-           {
-               //TODO pick second last
-           }
-           //           TODO evict n'stuff
            clearTable(victim);
-           debugPrintPM();
-           if (depth == TABLES_DEPTH)     // only if actual page
+           if (depth == TABLES_DEPTH - 1)     // only if actual page
            {
                PMrestore(victim, virtualAddr/ PAGE_SIZE);
            }
            PMwrite(lastPage*PAGE_SIZE + curPageNumber, victim);
-//           PMwrite(tempWord*PAGE_SIZE + curPageNumber, victim);
-           debugPrintPM();
            tempWord = victim;
 
        }
        lastPage = word_t(tempWord);
    }
-   uint64_t  outAdress = tempWord * PAGE_SIZE + findPageNumber(virtualAddr, TABLES_DEPTH);
-   return outAdress;
+   uint64_t  outAddress = tempWord * PAGE_SIZE + findPageNumber(virtualAddr, TABLES_DEPTH);
+
+   return outAddress;
 }
 
 void clearTable(uint64_t frameIndex) {
@@ -282,6 +249,10 @@ void VMinitialize() {
 
 
 int VMread(uint64_t virtualAddress, word_t* value) {
+    if (virtualAddress >= VIRTUAL_MEMORY_SIZE)
+    {
+        return 0;
+    }
     word_t physicalAddr = findAddress(virtualAddress);
     PMread(physicalAddr, value);
     return 1;
@@ -289,69 +260,11 @@ int VMread(uint64_t virtualAddress, word_t* value) {
 
 
 int VMwrite(uint64_t virtualAddress, word_t value) {
+    if (virtualAddress >= VIRTUAL_MEMORY_SIZE)
+    {
+        return 0;
+    }
     word_t physicalAddr = findAddress(virtualAddress);
-//    printf("physicalAddr = %u\n", physicalAddr);
     PMwrite(physicalAddr, value);
     return 1;
-}
-
-int main(int argc, char **argv) {
-    printf("RAM SIZE  = %lld\n", RAM_SIZE);
-    printf("Page Size = %lld\n", PAGE_SIZE);
-    printf("VIRTUAL_MEMORY_SIZE = %lld\n", VIRTUAL_MEMORY_SIZE);
-    printf("NUM_FRAMES = %lld\n", NUM_FRAMES);
-    printf("NUM_PAGES = %lld\n", NUM_PAGES);
-    VMinitialize();
-
-//    printf("findNextPath  %lu\n", findNextPath(13));
-
-//    for (uint64_t i = 0; i < ( NUM_FRAMES); ++i) {
-        uint64_t target = 13;
-        word_t value = 3;
-        printf("==================writing %llu to %llu ================\n", (long long int)value, (long long int) target);
-        VMwrite(target, value);
-        printf("-----------------------------------------------\n");
-    debugPrintPM();
-
-    target = 6;
-    value = 10;
-    printf("==================writing %llu to %llu ================\n", (long long int)value, (long long int) target);
-    VMwrite(target, value);
-    printf("-----------------------------------------------\n");
-    debugPrintPM();
-//    printf("VParent = %lu\n", getVirtualParent(4));
-
-    target = 31;
-    value = 9;
-    printf("==================writing %llu to %llu ================\n", (long long int)value, (long long int) target);
-    VMwrite(target, value);
-    printf("-----------------------------------------------\n");
-    debugPrintPM();
-
-
-//    }
-//    for (uint64_t i = 0; i < ( NUM_FRAMES); ++i) {
-//        word_t value;
-//        VMread(5 * i * PAGE_SIZE, &value);
-//        printf("reading from %llu %d\n", (long long int) i, value);
-////        assert(uint64_t(value) == i);
-//    }
-
-
-
-//    VMinitialize();
-//    for (uint64_t i = 0; i < ( NUM_FRAMES); ++i) {
-//        printf("writing to %llu\n", (long long int) i);
-//        VMwrite(5 * i * PAGE_SIZE, i);
-//    }
-//
-//    for (uint64_t i = 0; i < ( NUM_FRAMES); ++i) {
-//        word_t value;
-//        VMread(5 * i * PAGE_SIZE, &value);
-//        printf("reading from %llu %d\n", (long long int) i, value);
-////        assert(uint64_t(value) == i);
-//    }
-//    printf("success\n");
-
-    return 0;
 }
